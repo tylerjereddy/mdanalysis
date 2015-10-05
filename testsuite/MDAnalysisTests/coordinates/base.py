@@ -1,10 +1,11 @@
 import MDAnalysis as mda
 import numpy as np
 
-from numpy.testing import assert_equal, assert_raises, assert_almost_equal
+from numpy.testing import (assert_equal, assert_raises, assert_almost_equal)
 from unittest import TestCase
 
 from MDAnalysisTests.coordinates.reference import RefAdKSmall
+# generate a base reference class
 
 
 class _SingleFrameReader(TestCase, RefAdKSmall):
