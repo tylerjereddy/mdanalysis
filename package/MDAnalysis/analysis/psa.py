@@ -1021,7 +1021,7 @@ class Path(object):
         """
         if align:
             self.u_fitted = self.fit_to_reference(
-                                filename=filename, postfix=postfix,
+                                filename=filename, prefix=prefix, postfix=postfix,
                                 rmsdfile=rmsdfile, targetdir=targetdir,
                                 weights=weights, tol_mass=0.1)
         self.path = self.to_path(fitted=align, flat=flat)
