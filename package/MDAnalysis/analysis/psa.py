@@ -849,7 +849,11 @@ class Path(object):
              original trajectory filename (from :attr:`Path.u_original`) with
              `prefix` prepended
         prefix : str (optional)
-             prefix for auto-generating the new output filename
+             prefix for output filenames (passed to optional `prefix` parameter in
+             :class:`MDAnalysis.analysis.align.AlignTraj`)
+        postfix : str (optional)
+             postfix for output filenames (appended to the filename given to
+             :class:`MDAnalysis.analysis.align.AlignTraj`)
         rmsdfile : str (optional)
              file name for writing the RMSD time series [``None``]
         weights : {"mass", ``None``} or array_like (optional)
