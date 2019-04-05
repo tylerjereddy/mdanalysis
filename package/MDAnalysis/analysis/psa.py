@@ -1449,7 +1449,7 @@ class PSAnalysis(object):
 
 
         The fitted trajectories are written to new files in the
-        "/trj_fit" subdirectory in :attr:`PSAnalysis.targetdir` named
+        "/fitted_trajs" subdirectory in :attr:`PSAnalysis.targetdir` named
         "filename(*trajectory*)XXX*infix*_psa", where "XXX" is a number between
         000 and 999; the extension of each file is the same as its original.
         Optionally, the trajectories can also be saved in numpy compressed npz
