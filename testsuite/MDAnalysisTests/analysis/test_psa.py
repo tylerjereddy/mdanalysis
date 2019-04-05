@@ -167,7 +167,6 @@ class TestPSAnalysis(object):
         psa.run_pairs_analysis(neighbors=True)
         assert len(psa.nearest_neighbors) == 3
 
-    # @pytest.mark.xfail
     def test_load(self, psa):
         """Test that the automatically saved files can be loaded"""
         expected_path_names = psa.path_names[:]
