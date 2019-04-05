@@ -14,6 +14,7 @@
 # MDAnalysis: A Python package for the rapid analysis of molecular dynamics
 # simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
 # Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
+# doi: 10.25080/majora-629e541a-00e
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
@@ -71,8 +72,8 @@ from six.moves import range
 import numpy as np
 from numpy.lib.utils import deprecate
 
-from .util import check_coords
-from .mdamath import triclinic_vectors, triclinic_box
+from .util import check_coords, check_box
+from .mdamath import triclinic_vectors
 from ._augment import augment_coordinates, undo_augment
 from .nsgrid import FastNS
 
@@ -126,61 +127,6 @@ from .c_distances import (calc_distance_array,
 from .c_distances_openmp import OPENMP_ENABLED as USED_OPENMP
 
 
-def _check_box(box):
-    """Take a box input and deduce what type of system it represents based on
-    the shape of the array and whether all angles are 90 degrees.
-
-    Parameters
-    ----------
-    box : array_like
-        The unitcell dimensions of the system, which can be orthogonal or
-        triclinic and must be provided in the same format as returned by
-        :attr:`MDAnalysis.coordinates.base.Timestep.dimensions`:\n
-        ``[lx, ly, lz, alpha, beta, gamma]``.
-
-    Returns
-    -------
-    boxtype : str
-        * ``'ortho'`` orthogonal box
-        * ``'tri_vecs'`` triclinic box vectors
-
-    checked_box : numpy.ndarray
-        Array of dtype ``numpy.float32`` containing box information:
-        * If `boxtype` is ``'ortho'``, `cecked_box` will have the shape ``(3,)``
-          containing the x-, y-, and z-dimensions of the orthogonal box.
-        * If  `boxtype` is ``'tri_vecs'``, `cecked_box` will have the shape
-          ``(3, 3)`` containing the triclinic box vectors in a lower triangular
-          matrix as returned by
-          :meth:`~MDAnalysis.lib.mdamath.triclinic_vectors`.
-
-    Raises
-    ------
-    ValueError
-        If `box` is not of the form ``[lx, ly, lz, alpha, beta, gamma]``
-        or contains data that is not convertible to ``numpy.float32``.
-
-    See Also
-    --------
-    MDAnalysis.lib.mdamath.triclinic_vectors
-
-
-    .. versionchanged: 0.19.0
-       * Enforced correspondence of `box` with specified format.
-       * Added automatic conversion of input to :class:`numpy.ndarray` with
-         dtype ``numpy.float32``.
-       * Now also returns the box in the format expected by low-level functions
-         in :mod:`~MDAnalysis.lib.c_distances`.
-       * Removed obsolete box types ``tri_box`` and ``tri_vecs_bad``.
-    """
-    box = np.asarray(box, dtype=np.float32, order='C')
-    if box.shape != (6,):
-        raise ValueError("Invalid box information. Must be of the form "
-                         "[lx, ly, lz, alpha, beta, gamma].")
-    if np.all(box[3:] == 90.):
-        return 'ortho', box[:3]
-    return 'tri_vecs', triclinic_vectors(box)
-
-
 def _check_result_array(result, shape):
     """Check if the result array is ok to use.
 
@@ -198,7 +144,7 @@ def _check_result_array(result, shape):
 
     Returns
     -------
-    result : numpy.ndarray
+    result : numpy.ndarray (``dtype=numpy.float64``, ``shape=shape``)
         The input array or a newly created array if the input was ``None``.
 
     Raises
@@ -222,8 +168,8 @@ def _check_result_array(result, shape):
     return result
 
 
-@check_coords('reference', 'configuration', enforce_copy=False,
-              reduce_result_if_single=False, check_lengths_match=False)
+@check_coords('reference', 'configuration', reduce_result_if_single=False,
+              check_lengths_match=False)
 def distance_array(reference, configuration, box=None, result=None,
                    backend="serial"):
     """Calculate all possible distances between a reference set and another
@@ -263,9 +209,9 @@ def distance_array(reference, configuration, box=None, result=None,
 
     Returns
     -------
-    d : numpy.ndarray
-        Array with shape ``(n, m)`` containing the distances ``d[i,j]`` between
-        reference coordinates ``i`` and configuration coordinates ``j``.
+    d : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n, m)``)
+        Array containing the distances ``d[i,j]`` between reference coordinates
+        ``i`` and configuration coordinates ``j``.
 
 
     .. versionchanged:: 0.13.0
@@ -278,9 +224,11 @@ def distance_array(reference, configuration, box=None, result=None,
     refnum = reference.shape[0]
 
     distances = _check_result_array(result, (refnum, confnum))
+    if len(distances) == 0:
+        return distances
 
     if box is not None:
-        boxtype, box = _check_box(box)
+        boxtype, box = check_box(box)
         if boxtype == 'ortho':
             _run("calc_distance_array_ortho",
                  args=(reference, configuration, box, distances),
@@ -297,7 +245,7 @@ def distance_array(reference, configuration, box=None, result=None,
     return distances
 
 
-@check_coords('reference', enforce_copy=False, reduce_result_if_single=False)
+@check_coords('reference', reduce_result_if_single=False)
 def self_distance_array(reference, box=None, result=None, backend="serial"):
     """Calculate all possible distances within a configuration `reference`.
 
@@ -328,10 +276,9 @@ def self_distance_array(reference, box=None, result=None, backend="serial"):
 
     Returns
     -------
-    d : numpy.ndarray
-        Array with shape ``(n*(n-1)/2,)`` containing the distances ``dist[i,j]``
-        between reference coordinates ``i`` and ``j`` at position ``d[k]``. Loop
-        through ``d``:
+    d : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n*(n-1)/2,)``)
+        Array containing the distances ``dist[i,j]`` between reference
+        coordinates ``i`` and ``j`` at position ``d[k]``. Loop through ``d``:
 
         .. code-block:: python
 
@@ -354,7 +301,7 @@ def self_distance_array(reference, box=None, result=None, backend="serial"):
         return distances
 
     if box is not None:
-        boxtype, box = _check_box(box)
+        boxtype, box = check_box(box)
         if boxtype == 'ortho':
             _run("calc_self_distance_array_ortho",
                  args=(reference, box, distances),
@@ -411,14 +358,14 @@ def capped_distance(reference, configuration, max_cutoff, min_cutoff=None,
 
     Returns
     -------
-    pairs : numpy.ndarray
+    pairs : numpy.ndarray (``dtype=numpy.int64``, ``shape=(n_pairs, 2)``)
         Pairs of indices, corresponding to coordinates in the `reference` and
         `configuration` arrays such that the distance between them lies within
         the interval (`min_cutoff`, `max_cutoff`].
         Each row in `pairs` is an index pair ``[i, j]`` corresponding to the
         ``i``-th coordinate in `reference` and the ``j``-th coordinate in
         `configuration`.
-    distances : numpy.ndarray, optional
+    distances : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n_pairs,)``), optional
         Distances corresponding to each pair of indices. Only returned if
         `return_distances` is ``True``. ``distances[k]`` corresponds to the
         ``k``-th pair returned in `pairs` and gives the distance between the
@@ -451,21 +398,10 @@ def capped_distance(reference, configuration, max_cutoff, min_cutoff=None,
             raise ValueError("Box Argument is of incompatible type. The "
                              "dimension should be either None or of the form "
                              "[lx, ly, lz, alpha, beta, gamma]")
-    method = _determine_method(reference, configuration,
-                               max_cutoff, min_cutoff=min_cutoff,
-                               box=box, method=method)
-
-    if return_distances:
-        pairs, dist = method(reference, configuration, max_cutoff,
-                         min_cutoff=min_cutoff, box=box,
-                         return_distances=return_distances)
-        return np.asarray(pairs), np.asarray(dist)
-    else:
-        pairs = method(reference, configuration, max_cutoff,
-                         min_cutoff=min_cutoff, box=box,
-                         return_distances=return_distances)
-
-        return np.asarray(pairs)
+    method = _determine_method(reference, configuration, max_cutoff,
+                               min_cutoff=min_cutoff, box=box, method=method)
+    return method(reference, configuration, max_cutoff, min_cutoff=min_cutoff,
+                  box=box, return_distances=return_distances)
 
 
 def _determine_method(reference, configuration, max_cutoff, min_cutoff=None,
@@ -519,7 +455,7 @@ def _determine_method(reference, configuration, max_cutoff, min_cutoff=None,
             max_dim = np.array([reference.max(axis=0),
                                 configuration.max(axis=0)])
             size = max_dim.max(axis=0) - min_dim.min(axis=0)
-        elif np.allclose(box[3:], 90):
+        elif np.all(box[3:] == 90.0):
             size = box[:3]
         else:
             tribox = triclinic_vectors(box)
@@ -571,33 +507,37 @@ def _bruteforce_capped(reference, configuration, max_cutoff, min_cutoff=None,
 
     Returns
     -------
-    pairs : numpy.ndarray
+    pairs : numpy.ndarray (``dtype=numpy.int64``, ``shape=(n_pairs, 2)``)
         Pairs of indices, corresponding to coordinates in the `reference` and
         `configuration` arrays such that the distance between them lies within
         the interval (`min_cutoff`, `max_cutoff`].
         Each row in `pairs` is an index pair ``[i, j]`` corresponding to the
         ``i``-th coordinate in `reference` and the ``j``-th coordinate in
         `configuration`.
-    distances : numpy.ndarray, optional
+    distances : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n_pairs,)``), optional
         Distances corresponding to each pair of indices. Only returned if
         `return_distances` is ``True``. ``distances[k]`` corresponds to the
         ``k``-th pair returned in `pairs` and gives the distance between the
         coordinates ``reference[pairs[k, 0]]`` and
         ``configuration[pairs[k, 1]]``.
     """
-    distances = distance_array(reference, configuration, box=box)
-    if min_cutoff is not None:
-        mask = np.where((distances <= max_cutoff) & (distances > min_cutoff))
-    else:
-        mask = np.where((distances <= max_cutoff))
+    # Default return values (will be overwritten only if pairs are found):
+    pairs = np.empty((0, 2), dtype=np.int64)
+    distances = np.empty((0,), dtype=np.float64)
 
-    if mask[0].size > 0:
-        pairs = np.c_[mask[0], mask[1]]
-    else:
-        pairs = np.empty((0, 2), dtype=np.int64)
+    if len(reference) > 0 and len(configuration) > 0:
+        _distances = distance_array(reference, configuration, box=box)
+        if min_cutoff is not None:
+            mask = np.where((_distances <= max_cutoff) & \
+                            (_distances > min_cutoff))
+        else:
+            mask = np.where((_distances <= max_cutoff))
+        if mask[0].size > 0:
+            pairs = np.c_[mask[0], mask[1]]
+            if return_distances:
+                distances = _distances[mask]
 
     if return_distances:
-        distances = distances[mask]
         return pairs, distances
     else:
         return pairs
@@ -644,14 +584,14 @@ def _pkdtree_capped(reference, configuration, max_cutoff, min_cutoff=None,
 
     Returns
     -------
-    pairs : numpy.ndarray
+    pairs : numpy.ndarray (``dtype=numpy.int64``, ``shape=(n_pairs, 2)``)
         Pairs of indices, corresponding to coordinates in the `reference` and
         `configuration` arrays such that the distance between them lies within
         the interval (`min_cutoff`, `max_cutoff`].
         Each row in `pairs` is an index pair ``[i, j]`` corresponding to the
         ``i``-th coordinate in `reference` and the ``j``-th coordinate in
         `configuration`.
-    distances : numpy.ndarray, optional
+    distances : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n_pairs,)``), optional
         Distances corresponding to each pair of indices. Only returned if
         `return_distances` is ``True``. ``distances[k]`` corresponds to the
         ``k``-th pair returned in `pairs` and gives the distance between the
@@ -660,18 +600,24 @@ def _pkdtree_capped(reference, configuration, max_cutoff, min_cutoff=None,
     """
     from .pkdtree import PeriodicKDTree  # must be here to avoid circular import
 
-    kdtree = PeriodicKDTree(box=box)
-    cut = max_cutoff if box is not None else None
-    kdtree.set_coords(configuration, cutoff=cut)
-    pairs = kdtree.search_tree(reference, max_cutoff)
-    if (return_distances or (min_cutoff is not None)) and pairs.size > 0:
-        refA, refB = pairs[:, 0], pairs[:, 1]
-        distances = calc_bonds(reference[refA], configuration[refB], box=box)
-        if min_cutoff is not None:
-            mask = np.where(distances > min_cutoff)
-            pairs, distances = pairs[mask], distances[mask]
-    else:
-        distances = np.zeros((0, 1), dtype=np.float64)
+    # Default return values (will be overwritten only if pairs are found):
+    pairs = np.empty((0, 2), dtype=np.int64)
+    distances = np.empty((0,), dtype=np.float64)
+
+    if len(reference) > 0 and len(configuration) > 0:
+        kdtree = PeriodicKDTree(box=box)
+        cut = max_cutoff if box is not None else None
+        kdtree.set_coords(configuration, cutoff=cut)
+        _pairs = kdtree.search_tree(reference, max_cutoff)
+        if _pairs.size > 0:
+            pairs = _pairs
+            if (return_distances or (min_cutoff is not None)):
+                refA, refB = pairs[:, 0], pairs[:, 1]
+                distances = calc_bonds(reference[refA], configuration[refB],
+                                       box=box)
+                if min_cutoff is not None:
+                    mask = np.where(distances > min_cutoff)
+                    pairs, distances = pairs[mask], distances[mask]
 
     if return_distances:
         return pairs, distances
@@ -710,7 +656,7 @@ def _nsgrid_capped(reference, configuration, max_cutoff, min_cutoff=None,
     min_cutoff : float, optional
         Minimum cutoff distance between `reference` and `configuration`
         coordinates.
-    box : numpy.ndarray, optional
+    box : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n_pairs,)``), optional
         The unitcell dimensions of the system, which can be orthogonal or
         triclinic and must be provided in the same format as returned by
         :attr:`MDAnalysis.coordinates.base.Timestep.dimensions`:\n
@@ -720,7 +666,7 @@ def _nsgrid_capped(reference, configuration, max_cutoff, min_cutoff=None,
 
     Returns
     -------
-    pairs : numpy.ndarray
+    pairs : numpy.ndarray (``dtype=numpy.int64``, ``shape=(n_pairs, 2)``)
         Pairs of indices, corresponding to coordinates in the `reference` and
         `configuration` arrays such that the distance between them lies within
         the interval (`min_cutoff`, `max_cutoff`].
@@ -734,54 +680,55 @@ def _nsgrid_capped(reference, configuration, max_cutoff, min_cutoff=None,
         coordinates ``reference[pairs[k, 0]]`` and
         ``configuration[pairs[k, 1]]``.
     """
-    if box is None:
-        # create a pseudobox
-        # define the max range
-        # and supply the pseudobox
-        # along with only one set of coordinates
-        pseudobox = np.zeros(6, dtype=np.float32)
-        all_coords = np.concatenate([reference, configuration])
-        lmax = all_coords.max(axis=0)
-        lmin = all_coords.min(axis=0)
-        # Using maximum dimension as the box size
-        boxsize = (lmax-lmin).max()
-        # to avoid failures of very close particles
-        # but with larger cutoff
-        if boxsize < 2*max_cutoff:
-            # just enough box size so that NSGrid doesnot fails
-            sizefactor = 2.2*max_cutoff/boxsize
-        else:
-            sizefactor = 1.2
-        pseudobox[:3] = sizefactor*boxsize
-        pseudobox[3:] = 90.
-        shiftref, shiftconf = reference.copy(), configuration.copy()
-        # Extra padding near the origin
-        shiftref -= lmin - 0.1*boxsize
-        shiftconf -= lmin - 0.1*boxsize
-        gridsearch = FastNS(max_cutoff, shiftconf, box=pseudobox, pbc=False)
-        results = gridsearch.search(shiftref)
-    else:
-        gridsearch = FastNS(max_cutoff, configuration, box=box)
-        results = gridsearch.search(reference)
+    # Default return values (will be overwritten only if pairs are found):
+    pairs = np.empty((0, 2), dtype=np.int64)
+    distances = np.empty((0,), dtype=np.float64)
 
-    pairs = results.get_pairs()
-    if return_distances or (min_cutoff is not None):
-        pair_distance = results.get_pair_distances()
-        if min_cutoff is not None:
-            idx = pair_distance > min_cutoff
-            pairs, pair_distance = pairs[idx], pair_distance[idx]
+    if len(reference) > 0 and len(configuration) > 0:
+        if box is None:
+            # create a pseudobox
+            # define the max range
+            # and supply the pseudobox
+            # along with only one set of coordinates
+            pseudobox = np.zeros(6, dtype=np.float32)
+            all_coords = np.concatenate([reference, configuration])
+            lmax = all_coords.max(axis=0)
+            lmin = all_coords.min(axis=0)
+            # Using maximum dimension as the box size
+            boxsize = (lmax-lmin).max()
+            # to avoid failures for very close particles but with
+            # larger cutoff
+            boxsize = np.maximum(boxsize, 2 * max_cutoff)
+            pseudobox[:3] = boxsize + 2.2*max_cutoff
+            pseudobox[3:] = 90.
+            shiftref, shiftconf = reference.copy(), configuration.copy()
+            # Extra padding near the origin
+            shiftref -= lmin - 0.1*max_cutoff
+            shiftconf -= lmin - 0.1*max_cutoff
+            gridsearch = FastNS(max_cutoff, shiftconf, box=pseudobox, pbc=False)
+            results = gridsearch.search(shiftref)
+        else:
+            gridsearch = FastNS(max_cutoff, configuration, box=box)
+            results = gridsearch.search(reference)
+
+        pairs = results.get_pairs()
+        if return_distances or (min_cutoff is not None):
+            distances = results.get_pair_distances()
+            if min_cutoff is not None:
+                idx = distances > min_cutoff
+                pairs, distances = pairs[idx], distances[idx]
 
     if return_distances:
-        return pairs, pair_distance
+        return pairs, distances
     else:
         return pairs
 
 
 def self_capped_distance(reference, max_cutoff, min_cutoff=None, box=None,
-                         method=None):
+                         method=None, return_distances=True):
     """Calculates pairs of indices corresponding to entries in the `reference`
     array which are separated by a distance lying within the specified
-    cutoff(s). The respective distances are returned as well.
+    cutoff(s). Optionally, these distances can be returned as well.
 
     If the optional argument `box` is supplied, the minimum image convention is
     applied when calculating distances. Either orthogonal or triclinic boxes are
@@ -809,24 +756,27 @@ def self_capped_distance(reference, max_cutoff, min_cutoff=None, box=None,
     method : {'bruteforce', 'nsgrid', 'pkdtree'}, optional
         Keyword to override the automatic guessing of the employed search
         method.
+    return_distances : bool, optional
+        If set to ``True``, distances will also be returned.
 
     Returns
     -------
-    pairs : numpy.ndarray
+    pairs : numpy.ndarray (``dtype=numpy.int64``, ``shape=(n_pairs, 2)``)
         Pairs of indices, corresponding to coordinates in the `reference` array
         such that the distance between them lies within the interval
         (`min_cutoff`, `max_cutoff`].
         Each row in `pairs` is an index pair ``[i, j]`` corresponding to the
         ``i``-th and the ``j``-th coordinate in `reference`.
-    distances : numpy.ndarray
-        Distances corresponding to each pair of indices. ``distances[k]``
-        corresponds to the ``k``-th pair returned in `pairs` and gives the
-        distance between the coordinates ``reference[pairs[k, 0]]`` and
-        ``reference[pairs[k, 1]]``.
+    distances : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n_pairs,)``)
+        Distances corresponding to each pair of indices. Only returned if
+        `return_distances` is ``True``. ``distances[k]`` corresponds to the
+        ``k``-th pair returned in `pairs` and gives the distance between the
+        coordinates ``reference[pairs[k, 0]]`` and ``reference[pairs[k, 1]]``.
 
         .. code-block:: python
 
-            pairs, distances = self_capped_distances(reference, max_cutoff)
+            pairs, distances = self_capped_distances(reference, max_cutoff,
+                                                     return_distances=True)
             for k, [i, j] in enumerate(pairs):
                 coord1 = reference[i]
                 coord2 = reference[j]
@@ -843,6 +793,9 @@ def self_capped_distance(reference, max_cutoff, min_cutoff=None, box=None,
     self_distance_array
     MDAnalysis.lib.pkdtree.PeriodicKDTree.search
     MDAnalysis.lib.nsgrid.FastNS.self_search
+
+    .. versionchanged:: 0.20.0
+       Added `return_distances` keyword.
     """
     if box is not None:
         box = np.asarray(box, dtype=np.float32)
@@ -853,9 +806,8 @@ def self_capped_distance(reference, max_cutoff, min_cutoff=None, box=None,
     method = _determine_method_self(reference, max_cutoff,
                                     min_cutoff=min_cutoff,
                                     box=box, method=method)
-    pairs, dist = method(reference,  max_cutoff, min_cutoff=min_cutoff, box=box)
-
-    return np.asarray(pairs), np.asarray(dist)
+    return method(reference,  max_cutoff, min_cutoff=min_cutoff, box=box,
+                  return_distances=return_distances)
 
 
 def _determine_method_self(reference, max_cutoff, min_cutoff=None, box=None,
@@ -893,32 +845,35 @@ def _determine_method_self(reference, max_cutoff, min_cutoff=None, box=None,
     if method is not None:
         return methods[method.lower()]
 
+    if len(reference) < 100:
+        return methods['bruteforce']
+
     if box is None:
         min_dim = np.array([reference.min(axis=0)])
         max_dim = np.array([reference.max(axis=0)])
         size = max_dim.max(axis=0) - min_dim.min(axis=0)
-    elif np.allclose(box[3:], 90):
+    elif np.all(box[3:] == 90.0):
         size = box[:3]
     else:
         tribox = triclinic_vectors(box)
         size = tribox.max(axis=0) - tribox.min(axis=0)
 
-    if len(reference) < 100:
-        return methods['bruteforce']
-    elif max_cutoff < 0.03*size.min():
+    if max_cutoff < 0.03*size.min():
         return methods['pkdtree']
     else:
         return methods['nsgrid']
 
 
 @check_coords('reference', enforce_copy=False, reduce_result_if_single=False)
-def _bruteforce_capped_self(reference, max_cutoff, min_cutoff=None, box=None):
+def _bruteforce_capped_self(reference, max_cutoff, min_cutoff=None, box=None,
+                            return_distances=True):
     """Capped distance evaluations using a brute force method.
 
     Computes and returns an array containing pairs of indices corresponding to
     entries in the `reference` array which are separated by a distance lying
     within the specified cutoff(s). Employs naive distance computations (brute
-    force) to find relevant distances. These distances are returned as well.
+    force) to find relevant distances. Optionally, these distances can be
+    returned as well.
 
     If the optional argument `box` is supplied, the minimum image convention is
     applied when calculating distances. Either orthogonal or triclinic boxes are
@@ -938,49 +893,62 @@ def _bruteforce_capped_self(reference, max_cutoff, min_cutoff=None, box=None):
         triclinic and must be provided in the same format as returned by
         :attr:`MDAnalysis.coordinates.base.Timestep.dimensions`:\n
         ``[lx, ly, lz, alpha, beta, gamma]``.
+    return_distances : bool, optional
+        If set to ``True``, distances will also be returned.
 
     Returns
     -------
-    pairs : numpy.ndarray
+    pairs : numpy.ndarray (``dtype=numpy.int64``, ``shape=(n_pairs, 2)``)
         Pairs of indices, corresponding to coordinates in the `reference` array
         such that the distance between them lies within the interval
         (`min_cutoff`, `max_cutoff`].
         Each row in `pairs` is an index pair ``[i, j]`` corresponding to the
         ``i``-th and the ``j``-th coordinate in `reference`.
-    distances : numpy.ndarray
-        Distances corresponding to each pair of indices. ``distances[k]``
-        corresponds to the ``k``-th pair returned in `pairs` and gives the
-        distance between the coordinates ``reference[pairs[k, 0]]`` and
-        ``reference[pairs[k, 1]]``.
+    distances : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n_pairs,)``), optional
+        Distances corresponding to each pair of indices. Only returned if
+        `return_distances` is ``True``. ``distances[k]`` corresponds to the
+        ``k``-th pair returned in `pairs` and gives the distance between the
+        coordinates ``reference[pairs[k, 0]]`` and
+        ``configuration[pairs[k, 1]]``.
+
+    .. versionchanged:: 0.20.0
+       Added `return_distances` keyword.
     """
-    pairs, distance = [], []
+    # Default return values (will be overwritten only if pairs are found):
+    pairs = np.empty((0, 2), dtype=np.int64)
+    distances = np.empty((0,), dtype=np.float64)
 
     N = len(reference)
-    distvec = np.zeros((N*(N-1)//2), dtype=np.float64)
-    self_distance_array(reference, box=box, result=distvec)
+    # We're searching within a single coordinate set, so we need at least two
+    # coordinates to find distances between them.
+    if N > 1:
+        distvec = self_distance_array(reference, box=box)
+        dist = np.full((N, N), np.finfo(np.float64).max, dtype=np.float64)
+        dist[np.triu_indices(N, 1)] = distvec
 
-    distance = np.ones((N, N), dtype=np.float32)*max_cutoff
-    distance[np.triu_indices(N, 1)] = distvec
+        if min_cutoff is not None:
+            mask = np.where((dist <= max_cutoff) & (dist > min_cutoff))
+        else:
+            mask = np.where((dist <= max_cutoff))
 
-    if min_cutoff is not None:
-        mask = np.where((distance < max_cutoff) & (distance > min_cutoff))
-    else:
-        mask = np.where((distance < max_cutoff))
-
-    if mask[0].size > 0:
-        pairs = np.c_[mask[0], mask[1]]
-        distance = distance[mask]
-    return np.asarray(pairs), np.asarray(distance)
+        if mask[0].size > 0:
+            pairs = np.c_[mask[0], mask[1]]
+            distances = dist[mask]
+    if return_distances:
+        return pairs, distances
+    return pairs
 
 
 @check_coords('reference', enforce_copy=False, reduce_result_if_single=False)
-def _pkdtree_capped_self(reference, max_cutoff, min_cutoff=None, box=None):
+def _pkdtree_capped_self(reference, max_cutoff, min_cutoff=None, box=None,
+                         return_distances=True):
     """Capped distance evaluations using a KDtree method.
 
     Computes and returns an array containing pairs of indices corresponding to
     entries in the `reference` array which are separated by a distance lying
     within the specified cutoff(s). Employs a (periodic) KDtree algorithm to
-    find relevant distances. These distances are returned as well.
+    find relevant distances. Optionally, these distances can be returned as
+    well.
 
     If the optional argument `box` is supplied, the minimum image convention is
     applied when calculating distances. Either orthogonal or triclinic boxes are
@@ -1000,44 +968,63 @@ def _pkdtree_capped_self(reference, max_cutoff, min_cutoff=None, box=None):
         triclinic and must be provided in the same format as returned by
         :attr:`MDAnalysis.coordinates.base.Timestep.dimensions`:\n
         ``[lx, ly, lz, alpha, beta, gamma]``.
+    return_distances : bool, optional
+        If set to ``True``, distances will also be returned.
 
     Returns
     -------
-    pairs : numpy.ndarray
+    pairs : numpy.ndarray (``dtype=numpy.int64``, ``shape=(n_pairs, 2)``)
         Pairs of indices, corresponding to coordinates in the `reference` array
         such that the distance between them lies within the interval
         (`min_cutoff`, `max_cutoff`].
         Each row in `pairs` is an index pair ``[i, j]`` corresponding to the
         ``i``-th and the ``j``-th coordinate in `reference`.
-    distances : numpy.ndarray
-        Distances corresponding to each pair of indices. ``distances[k]``
-        corresponds to the ``k``-th pair returned in `pairs` and gives the
-        distance between the coordinates ``reference[pairs[k, 0]]`` and
+    distances : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n_pairs,)``)
+        Distances corresponding to each pair of indices. Only returned if
+        `return_distances` is ``True``. ``distances[k]`` corresponds to the
+        ``k``-th pair returned in `pairs` and gives the distance between
+        the coordinates ``reference[pairs[k, 0]]`` and
         ``reference[pairs[k, 1]]``.
+
+    .. versionchanged:: 0.20.0
+       Added `return_distances` keyword.
     """
     from .pkdtree import PeriodicKDTree  # must be here to avoid circular import
 
-    pairs, distance = [], []
-    kdtree = PeriodicKDTree(box=box)
-    cut = max_cutoff if box is not None else None
-    kdtree.set_coords(reference, cutoff=cut)
-    pairs = kdtree.search_pairs(max_cutoff)
-    if pairs.size > 0:
-        refA, refB = pairs[:, 0], pairs[:, 1]
-        distance = calc_bonds(reference[refA], reference[refB], box=box)
-        if min_cutoff is not None:
-            mask = np.where(distance > min_cutoff)[0]
-            pairs, distance = pairs[mask], distance[mask]
-    return np.asarray(pairs), np.asarray(distance)
+    # Default return values (will be overwritten only if pairs are found):
+    pairs = np.empty((0, 2), dtype=np.int64)
+    distances = np.empty((0,), dtype=np.float64)
+
+    # We're searching within a single coordinate set, so we need at least two
+    # coordinates to find distances between them.
+    if len(reference) > 1:
+        kdtree = PeriodicKDTree(box=box)
+        cut = max_cutoff if box is not None else None
+        kdtree.set_coords(reference, cutoff=cut)
+        _pairs = kdtree.search_pairs(max_cutoff)
+        if _pairs.size > 0:
+            pairs = _pairs
+            if (return_distances or (min_cutoff is not None)):
+                refA, refB = pairs[:, 0], pairs[:, 1]
+                distances = calc_bonds(reference[refA], reference[refB], box=box)
+                if min_cutoff is not None:
+                    idx = distances > min_cutoff
+                    pairs, distances = pairs[idx], distances[idx]
+    if return_distances:
+        return pairs, distances
+    return pairs
 
 
-def _nsgrid_capped_self(reference, max_cutoff, min_cutoff=None, box=None):
+@check_coords('reference', enforce_copy=False, reduce_result_if_single=False)
+def _nsgrid_capped_self(reference, max_cutoff, min_cutoff=None, box=None,
+                        return_distances=True):
     """Capped distance evaluations using a grid-based search method.
 
     Computes and returns an array containing pairs of indices corresponding to
     entries in the `reference` array which are separated by a distance lying
     within the specified cutoff(s). Employs a grid-based search algorithm to
-    find relevant distances. These distances are returned as well.
+    find relevant distances. Optionally, these distances can be returned as
+    well.
 
     If the optional argument `box` is supplied, the minimum image convention is
     applied when calculating distances. Either orthogonal or triclinic boxes are
@@ -1060,57 +1047,67 @@ def _nsgrid_capped_self(reference, max_cutoff, min_cutoff=None, box=None):
 
     Returns
     -------
-    pairs : numpy.ndarray
+    pairs : numpy.ndarray (``dtype=numpy.int64``, ``shape=(n_pairs, 2)``)
         Pairs of indices, corresponding to coordinates in the `reference` array
         such that the distance between them lies within the interval
         (`min_cutoff`, `max_cutoff`].
         Each row in `pairs` is an index pair ``[i, j]`` corresponding to the
         ``i``-th and the ``j``-th coordinate in `reference`.
-    distances : numpy.ndarray
-        Distances corresponding to each pair of indices. ``distances[k]``
-        corresponds to the ``k``-th pair returned in `pairs` and gives the
-        distance between the coordinates ``reference[pairs[k, 0]]`` and
-        ``reference[pairs[k, 1]]``.
+    distances : numpy.ndarray, optional
+        Distances corresponding to each pair of indices. Only returned if
+        `return_distances` is ``True``. ``distances[k]`` corresponds to the
+        ``k``-th pair returned in `pairs` and gives the distance between the
+        coordinates ``reference[pairs[k, 0]]`` and
+        ``configuration[pairs[k, 1]]``.
+
+    .. versionchanged:: 0.20.0
+       Added `return_distances` keyword.
     """
-    reference = np.asarray(reference, dtype=np.float32)
-    if reference.shape == (3, ) or len(reference) == 1:
-        return [], []
+    # Default return values (will be overwritten only if pairs are found):
+    pairs = np.empty((0, 2), dtype=np.int64)
+    distances = np.empty((0,), dtype=np.float64)
 
-    if box is None:
-        # create a pseudobox
-        # define the max range
-        # and supply the pseudobox
-        # along with only one set of coordinates
-        pseudobox = np.zeros(6, dtype=np.float32)
-        lmax = reference.max(axis=0)
-        lmin = reference.min(axis=0)
-        # Using maximum dimension as the box size
-        boxsize = (lmax-lmin).max()
-        # to avoid failures of very close particles
-        # but with larger cutoff
-        if boxsize < 2*max_cutoff:
-            # just enough box size so that NSGrid doesnot fails
-            sizefactor = 2.2*max_cutoff/boxsize
+    # We're searching within a single coordinate set, so we need at least two
+    # coordinates to find distances between them.
+    if len(reference) > 1:
+        if box is None:
+            # create a pseudobox
+            # define the max range
+            # and supply the pseudobox
+            # along with only one set of coordinates
+            pseudobox = np.zeros(6, dtype=np.float32)
+            lmax = reference.max(axis=0)
+            lmin = reference.min(axis=0)
+            # Using maximum dimension as the box size
+            boxsize = (lmax-lmin).max()
+            # to avoid failures of very close particles
+            # but with larger cutoff
+            if boxsize < 2*max_cutoff:
+                # just enough box size so that NSGrid doesnot fails
+                sizefactor = 2.2*max_cutoff/boxsize
+            else:
+                sizefactor = 1.2
+            pseudobox[:3] = sizefactor*boxsize
+            pseudobox[3:] = 90.
+            shiftref = reference.copy()
+            # Extra padding near the origin
+            shiftref -= lmin - 0.1*boxsize
+            gridsearch = FastNS(max_cutoff, shiftref, box=pseudobox, pbc=False)
+            results = gridsearch.self_search()
         else:
-            sizefactor = 1.2
-        pseudobox[:3] = sizefactor*boxsize
-        pseudobox[3:] = 90.
-        shiftref = reference.copy()
-        # Extra padding near the origin
-        shiftref -= lmin - 0.1*boxsize
-        gridsearch = FastNS(max_cutoff, shiftref, box=pseudobox, pbc=False)
-        results = gridsearch.self_search()
-    else:
-        gridsearch = FastNS(max_cutoff, reference, box=box)
-        results = gridsearch.self_search()
+            gridsearch = FastNS(max_cutoff, reference, box=box)
+            results = gridsearch.self_search()
 
-    pairs = results.get_pairs()[::2, :]
-    pair_distance = results.get_pair_distances()[::2]
+        pairs = results.get_pairs()[::2, :]
+        if return_distances or (min_cutoff is not None):
+            distances = results.get_pair_distances()[::2]
+            if min_cutoff is not None:
+                idx = distances > min_cutoff
+                pairs, distances = pairs[idx], distances[idx]
 
-    if min_cutoff is not None:
-        idx = pair_distance > min_cutoff
-        pairs, pair_distance = pairs[idx], pair_distance[idx]
-    return pairs, pair_distance
+    if return_distances:
+        return pairs, distances
+    return pairs
 
 
 @check_coords('coords')
@@ -1137,9 +1134,8 @@ def transform_RtoS(coords, box, backend="serial"):
 
     Returns
     -------
-    newcoords : numpy.ndarray
-        An array of dtype ``numpy.float32`` with the same shape as `coords`
-        containing fractional coordiantes.
+    newcoords : numpy.ndarray (``dtype=numpy.float32``, ``shape=coords.shape``)
+        An array containing fractional coordiantes.
 
 
     .. versionchanged:: 0.13.0
@@ -1148,13 +1144,16 @@ def transform_RtoS(coords, box, backend="serial"):
        Internal dtype conversion of input coordinates to ``numpy.float32``.
        Now also accepts (and, likewise, returns) a single coordinate.
     """
-    boxtype, box = _check_box(box)
+    if len(coords) == 0:
+        return coords
+    boxtype, box = check_box(box)
     if boxtype == 'ortho':
         box = np.diag(box)
+    box = box.astype(np.float64)
 
     # Create inverse matrix of box
     # need order C here
-    inv = np.array(np.linalg.inv(box), dtype=np.float32, order='C')
+    inv = np.array(np.linalg.inv(box), order='C')
 
     _run("coord_transform", args=(coords, inv), backend=backend)
 
@@ -1184,9 +1183,8 @@ def transform_StoR(coords, box, backend="serial"):
 
     Returns
     -------
-    newcoords : numpy.ndarray
-        An array of dtype ``numpy.float32`` with the same shape as `coords`
-        containing real space coordiantes.
+    newcoords : numpy.ndarray (``dtype=numpy.float32``, ``shape=coords.shape``)
+        An array containing real space coordiantes.
 
 
     .. versionchanged:: 0.13.0
@@ -1195,15 +1193,18 @@ def transform_StoR(coords, box, backend="serial"):
        Internal dtype conversion of input coordinates to ``numpy.float32``.
        Now also accepts (and, likewise, returns) a single coordinate.
     """
-    boxtype, box = _check_box(box)
+    if len(coords) == 0:
+        return coords
+    boxtype, box = check_box(box)
     if boxtype == 'ortho':
         box = np.diag(box)
+    box = box.astype(np.float64)
 
     _run("coord_transform", args=(coords, box), backend=backend)
     return coords
 
 
-@check_coords('coords1', 'coords2', enforce_copy=False)
+@check_coords('coords1', 'coords2')
 def calc_bonds(coords1, coords2, box=None, result=None, backend="serial"):
     """Calculates the bond lengths between pairs of atom positions from the two
     coordinate arrays `coords1` and `coords2`, which must contain the same
@@ -1250,10 +1251,10 @@ def calc_bonds(coords1, coords2, box=None, result=None, backend="serial"):
 
     Returns
     -------
-    bondlengths : numpy.ndarray or float
-        Array of dtype ``numpy.float64`` containing the bond lengths between
-        each pair of coordinates. If two single coordinates were supplied, their
-        distance is returned as a single number instead of an array.
+    bondlengths : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n,)``) or numpy.float64
+        Array containing the bond lengths between each pair of coordinates. If
+        two single coordinates were supplied, their distance is returned as a
+        single number instead of an array.
 
 
     .. versionadded:: 0.8
@@ -1266,25 +1267,26 @@ def calc_bonds(coords1, coords2, box=None, result=None, backend="serial"):
     numatom = coords1.shape[0]
     bondlengths = _check_result_array(result, (numatom,))
 
-    if box is not None:
-        boxtype, box = _check_box(box)
-        if boxtype == 'ortho':
-            _run("calc_bond_distance_ortho",
-                 args=(coords1, coords2, box, bondlengths),
-                 backend=backend)
+    if numatom > 0:
+        if box is not None:
+            boxtype, box = check_box(box)
+            if boxtype == 'ortho':
+                _run("calc_bond_distance_ortho",
+                     args=(coords1, coords2, box, bondlengths),
+                     backend=backend)
+            else:
+                _run("calc_bond_distance_triclinic",
+                     args=(coords1, coords2, box, bondlengths),
+                     backend=backend)
         else:
-            _run("calc_bond_distance_triclinic",
-                 args=(coords1, coords2, box, bondlengths),
+            _run("calc_bond_distance",
+                 args=(coords1, coords2, bondlengths),
                  backend=backend)
-    else:
-        _run("calc_bond_distance",
-             args=(coords1, coords2, bondlengths),
-             backend=backend)
 
     return bondlengths
 
 
-@check_coords('coords1', 'coords2', 'coords3', enforce_copy=False)
+@check_coords('coords1', 'coords2', 'coords3')
 def calc_angles(coords1, coords2, coords3, box=None, result=None,
                 backend="serial"):
     """Calculates the angles formed between triplets of atom positions from the
@@ -1338,11 +1340,10 @@ def calc_angles(coords1, coords2, coords3, box=None, result=None,
 
     Returns
     -------
-    angles : numpy.ndarray or float
-        Array of dtype ``numpy.float64`` containing the angles between each
-        triplet of coordinates. Values are returned in radians (rad). If three
-        single coordinates were supplied, the angle is returned as a single
-        number instead of an array.
+    angles : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n,)``) or numpy.float64
+        Array containing the angles between each triplet of coordinates. Values
+        are returned in radians (rad). If three single coordinates were
+        supplied, the angle is returned as a single number instead of an array.
 
 
     .. versionadded:: 0.8
@@ -1358,25 +1359,26 @@ def calc_angles(coords1, coords2, coords3, box=None, result=None,
     numatom = coords1.shape[0]
     angles = _check_result_array(result, (numatom,))
 
-    if box is not None:
-        boxtype, box = _check_box(box)
-        if boxtype == 'ortho':
-            _run("calc_angle_ortho",
-                   args=(coords1, coords2, coords3, box, angles),
-                   backend=backend)
+    if numatom > 0:
+        if box is not None:
+            boxtype, box = check_box(box)
+            if boxtype == 'ortho':
+                _run("calc_angle_ortho",
+                       args=(coords1, coords2, coords3, box, angles),
+                       backend=backend)
+            else:
+                _run("calc_angle_triclinic",
+                       args=(coords1, coords2, coords3, box, angles),
+                       backend=backend)
         else:
-            _run("calc_angle_triclinic",
-                   args=(coords1, coords2, coords3, box, angles),
+            _run("calc_angle",
+                   args=(coords1, coords2, coords3, angles),
                    backend=backend)
-    else:
-        _run("calc_angle",
-               args=(coords1, coords2, coords3, angles),
-               backend=backend)
 
     return angles
 
 
-@check_coords('coords1', 'coords2', 'coords3', 'coords4', enforce_copy=False)
+@check_coords('coords1', 'coords2', 'coords3', 'coords4')
 def calc_dihedrals(coords1, coords2, coords3, coords4, box=None, result=None,
                    backend="serial"):
     """Calculates the dihedral angles formed between quadruplets of positions
@@ -1440,11 +1442,11 @@ def calc_dihedrals(coords1, coords2, coords3, coords4, box=None, result=None,
 
     Returns
     -------
-    dihedrals : numpy.ndarray or float
-        Array of dtype ``numpy.float64`` containing the dihedral angles formed
-        by each quadruplet of coordinates. Values are returned in radians (rad).
-        If four single coordinates were supplied, the dihedral angle is returned
-        as a single number instead of an array.
+    dihedrals : numpy.ndarray (``dtype=numpy.float64``, ``shape=(n,)``) or numpy.float64
+        Array containing the dihedral angles formed by each quadruplet of
+        coordinates. Values are returned in radians (rad). If four single
+        coordinates were supplied, the dihedral angle is returned as a single
+        number instead of an array.
 
 
     .. versionadded:: 0.8
@@ -1462,20 +1464,21 @@ def calc_dihedrals(coords1, coords2, coords3, coords4, box=None, result=None,
     numatom = coords1.shape[0]
     dihedrals = _check_result_array(result, (numatom,))
 
-    if box is not None:
-        boxtype, box = _check_box(box)
-        if boxtype == 'ortho':
-            _run("calc_dihedral_ortho",
-                 args=(coords1, coords2, coords3, coords4, box, dihedrals),
-                 backend=backend)
+    if numatom > 0:
+        if box is not None:
+            boxtype, box = check_box(box)
+            if boxtype == 'ortho':
+                _run("calc_dihedral_ortho",
+                     args=(coords1, coords2, coords3, coords4, box, dihedrals),
+                     backend=backend)
+            else:
+                _run("calc_dihedral_triclinic",
+                     args=(coords1, coords2, coords3, coords4, box, dihedrals),
+                     backend=backend)
         else:
-            _run("calc_dihedral_triclinic",
-                 args=(coords1, coords2, coords3, coords4, box, dihedrals),
+            _run("calc_dihedral",
+                 args=(coords1, coords2, coords3, coords4, dihedrals),
                  backend=backend)
-    else:
-        _run("calc_dihedral",
-             args=(coords1, coords2, coords3, coords4, dihedrals),
-             backend=backend)
 
     return dihedrals
 
@@ -1499,9 +1502,9 @@ def apply_PBC(coords, box, backend="serial"):
 
     Returns
     -------
-    newcoords : numpy.ndarray
-        Array of dtype ``numpy.float32`` containing coordinates that all lie
-        within the primary unit cell as defined by `box`.
+    newcoords : numpy.ndarray  (``dtype=numpy.float32``, ``shape=coords.shape``)
+        Array containing coordinates that all lie within the primary unit cell
+        as defined by `box`.
 
 
     .. versionadded:: 0.8
@@ -1511,12 +1514,12 @@ def apply_PBC(coords, box, backend="serial"):
        Internal dtype conversion of input coordinates to ``numpy.float32``.
        Now also accepts (and, likewise, returns) single coordinates.
     """
-    boxtype, box = _check_box(box)
+    if len(coords) == 0:
+        return coords
+    boxtype, box = check_box(box)
     if boxtype == 'ortho':
-        box_inv = box ** (-1)
-        _run("ortho_pbc", args=(coords, box, box_inv), backend=backend)
+        _run("ortho_pbc", args=(coords, box), backend=backend)
     else:
-        box_inv = np.diagonal(box) ** (-1)
-        _run("triclinic_pbc", args=(coords, box, box_inv), backend=backend)
+        _run("triclinic_pbc", args=(coords, box), backend=backend)
 
     return coords

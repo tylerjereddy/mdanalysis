@@ -14,6 +14,7 @@
 # MDAnalysis: A Python package for the rapid analysis of molecular dynamics
 # simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
 # Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
+# doi: 10.25080/majora-629e541a-00e
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
@@ -300,7 +301,7 @@ the zone, on the other hand, a fast decay means a short permanence time::
   plt.xlabel('Time')
   plt.ylabel('SP')
   plt.title('Survival Probability')
-  plt.plot(taus, sp_timeseries)
+  plt.plot(tau_timeseries, sp_timeseries)
   plt.show()
 
 
@@ -419,7 +420,7 @@ import numpy as np
 import multiprocessing
 
 import MDAnalysis.analysis.hbonds
-from MDAnalysis.lib.log import _set_verbose, ProgressMeter
+from MDAnalysis.lib.log import ProgressMeter
 
 
 class HydrogenBondLifetimes(object):
@@ -596,11 +597,10 @@ class HydrogenBondLifetimes(object):
         return a
 
     def _HBA(self, ts, conn, universe, selAtom1, selAtom2,
-             verbose=None, quiet=None):
+             verbose=False):
         """
         Main function for calculate C_i and C_c in parallel.
         """
-        verbose = _set_verbose(verbose, quiet, default=False)
         finalGetResidue1 = selAtom1
         finalGetResidue2 = selAtom2
         frame = ts.frame
@@ -965,9 +965,9 @@ class AngularDistribution(object):
         lencosThetaHH = len(cosThetaHH)
         lencosThetadip = len(cosThetadip)
         histInterval = bins
-        histcosThetaOH = np.histogram(cosThetaOH, histInterval, normed=True)
-        histcosThetaHH = np.histogram(cosThetaHH, histInterval, normed=True)
-        histcosThetadip = np.histogram(cosThetadip, histInterval, normed=True)
+        histcosThetaOH = np.histogram(cosThetaOH, histInterval, density=True)
+        histcosThetaHH = np.histogram(cosThetaHH, histInterval, density=True)
+        histcosThetadip = np.histogram(cosThetadip, histInterval, density=True)
 
         return (histcosThetaOH, histcosThetaHH, histcosThetadip)
 
