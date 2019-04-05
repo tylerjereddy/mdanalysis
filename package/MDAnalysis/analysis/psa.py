@@ -1381,6 +1381,7 @@ class PSAnalysis(object):
             trj_names.append(filename)
         self.trj_names = trj_names
         self.fit_trj_names = None
+        self.default_fitted_path_prefix = 'psafit_'
         self.default_path_basename = 'path'
         self.path_names = None
         self.top_name = self.universes[0].filename if len(universes) != 0 else None
@@ -1410,8 +1411,9 @@ class PSAnalysis(object):
         self._psa_pairs = None # (distance vector order) list of all PSAPairs
 
 
-    def generate_paths(self, align=False, filename=None, infix='', weights=None,
-                       tol_mass=False, ref_frame=None, flat=False, save=True, store=True):
+    def generate_paths(self, align=False, filename=None, prefix=None, postfix='',
+                       weights=None, tol_mass=False, ref_frame=None, flat=False,
+                       save=True, store=True):
         """Generate paths, aligning each to reference structure if necessary.
 
         Parameters
@@ -1420,10 +1422,13 @@ class PSAnalysis(object):
              Align trajectories to atom selection :attr:`PSAnalysis.ref_select`
              of :attr:`PSAnalysis.u_reference` [``False``]
         filename : str
-             strings representing base filename for fitted trajectories and
-             paths [``None``]
-        infix : str
-             additional tag string that is inserted into the output filename of
+             string representing base filename for fitted paths and trajectories
+             files [``None``]
+        prefix : str
+             additional tag string that is prepended to the output filename of
+             the fitted paths and trajectory files ['']
+        postfix : str
+             additional tag string that is appended to the output filename of
              the fitted trajectory files ['']
         weights : {"mass", ``None``} or array_like (optional)
              choose weights. With ``"mass"`` uses masses as weights; with
@@ -1469,6 +1474,7 @@ class PSAnalysis(object):
         if ref_frame is None:
             ref_frame = self.ref_frame
 
+        prefix = prefix or self.default_fitted_path_prefix
         filename = filename or self.default_path_basename
         paths = []
         fit_trj_names = []
@@ -1476,9 +1482,9 @@ class PSAnalysis(object):
             p = Path(u, self.u_reference, ref_select=self.ref_select,
                      path_select=self.path_select, ref_frame=ref_frame)
             trj_dir = os.path.join(self.targetdir, self.datadirs['fitted_trajs'])
-            postfix = '{0}_{1:03n}'.format(infix, i+1)
+            postfix = '{0}{1:03n}'.format(postfix, i+1)
             top_name, fit_trj_name = p.run(align=align, filename=filename,
-                                           postfix=postfix,
+                                           prefix=prefix, postfix=postfix,
                                            targetdir=trj_dir,
                                            weights=weights,
                                            tol_mass=tol_mass, flat=flat)
@@ -1656,7 +1662,7 @@ class PSAnalysis(object):
         return filename
 
 
-    def save_paths(self, filename=None):
+    def save_paths(self, filename=None, prefix=None):
         """Save fitted :attr:`PSAnalysis.paths` to numpy compressed npz files.
 
         The data are saved with :func:`numpy.savez_compressed` in the directory
@@ -1664,8 +1670,12 @@ class PSAnalysis(object):
 
         Parameters
         ----------
-        filename : str
-             specifies filename [``None``]
+        filename : str (optional)
+             specifies filename; defaults to default path basename
+             [``None``]
+        prefix : str (optional)
+             prefix for output filenames of paths; defaults to default path prefix
+             [``None``]
 
         Returns
         -------
@@ -1676,9 +1686,12 @@ class PSAnalysis(object):
         load
 
         """
-        filename = filename or 'path_psa'
+
+        prefix = prefix or self.default_fitted_path_prefix
+        filename = filename or self.default_path_basename
         head = os.path.join(self.targetdir, self.datadirs['paths'])
-        outfile = os.path.join(head, filename)
+        tail = prefix + filename
+        outfile = os.path.join(head, tail)
         if self.paths is None:
             raise NoDataError("Paths have not been calculated yet")
         path_names = []
@@ -1690,7 +1703,7 @@ class PSAnalysis(object):
         self.path_names = path_names
         with open(self._paths_pkl, 'wb') as output:
             cPickle.dump(self.path_names, output)
-        return filename
+        return tail
 
 
     def load(self):
