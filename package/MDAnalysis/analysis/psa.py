@@ -953,7 +953,7 @@ class Path(object):
             return np.array([atoms.positions for _ in frames])
 
 
-    def run(self, align=False, filename=None, postfix='_fit', rmsdfile=None,
+    def run(self, align=False, filename=None, prefix='', postfix='_fit', rmsdfile=None,
             targetdir=os.path.curdir, weights=None, tol_mass=0.1,
             flat=False):
         r"""Generate a path from a trajectory and reference structure.
@@ -984,8 +984,12 @@ class Path(object):
              filename for the RMS-fitted trajectory or pdb; defaults to the
              original trajectory filename (from :attr:`Path.u_original`) with
              *prefix* prepended
+        prefix : str (optional)
+             prefix for output filenames (passed to optional `prefix` parameter in
+             :class:`MDAnalysis.analysis.align.AlignTraj`)
         postfix : str (optional)
-             prefix for auto-generating the new output filename
+             postfix for output filenames (appended to the filename given to
+             :class:`MDAnalysis.analysis.align.AlignTraj`)
         rmsdfile : str (optional)
              file name for writing the RMSD time series [``None``]
         weights : {"mass", ``None``} or array_like (optional)
