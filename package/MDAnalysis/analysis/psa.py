@@ -837,10 +837,10 @@ class Path(object):
         self.natoms = None
 
 
-    def fit_to_reference(self, filename=None, prefix='', postfix='_fit',
+    def fit_to_reference(self, filename=None, prefix='psafit_', postfix='',
                          rmsdfile=None, targetdir=os.path.curdir,
                          weights=None, tol_mass=0.1):
-        """Align each trajectory frame to the reference structure
+        """Align each trajectory frame to the reference structure.
 
         Parameters
         ----------
@@ -849,10 +849,10 @@ class Path(object):
              original trajectory filename (from :attr:`Path.u_original`) with
              `prefix` prepended
         prefix : str (optional)
-             prefix for output filenames (passed to optional `prefix` parameter in
+             prefix for output filenames (sets optional `prefix` parameter in
              :class:`MDAnalysis.analysis.align.AlignTraj`)
         postfix : str (optional)
-             postfix for output filenames (appended to the filename given to
+             postfix for output filenames (appended to the filename to be given to
              :class:`MDAnalysis.analysis.align.AlignTraj`)
         rmsdfile : str (optional)
              file name for writing the RMSD time series [``None``]
@@ -953,7 +953,7 @@ class Path(object):
             return np.array([atoms.positions for _ in frames])
 
 
-    def run(self, align=False, filename=None, prefix='', postfix='_fit', rmsdfile=None,
+    def run(self, align=False, filename=None, prefix='psafit_', postfix='', rmsdfile=None,
             targetdir=os.path.curdir, weights=None, tol_mass=0.1,
             flat=False):
         r"""Generate a path from a trajectory and reference structure.
@@ -1381,6 +1381,7 @@ class PSAnalysis(object):
             trj_names.append(filename)
         self.trj_names = trj_names
         self.fit_trj_names = None
+        self.default_path_basename = 'path'
         self.path_names = None
         self.top_name = self.universes[0].filename if len(universes) != 0 else None
         self.labels = labels or self.trj_names
@@ -1409,7 +1410,7 @@ class PSAnalysis(object):
         self._psa_pairs = None # (distance vector order) list of all PSAPairs
 
 
-    def generate_paths(self, align=False, filename='fitted', infix='', weights=None,
+    def generate_paths(self, align=False, filename=None, infix='', weights=None,
                        tol_mass=False, ref_frame=None, flat=False, save=True, store=True):
         """Generate paths, aligning each to reference structure if necessary.
 
@@ -1468,13 +1469,14 @@ class PSAnalysis(object):
         if ref_frame is None:
             ref_frame = self.ref_frame
 
+        filename = filename or self.default_path_basename
         paths = []
         fit_trj_names = []
         for i, u in enumerate(self.universes):
             p = Path(u, self.u_reference, ref_select=self.ref_select,
                      path_select=self.path_select, ref_frame=ref_frame)
             trj_dir = os.path.join(self.targetdir, self.datadirs['fitted_trajs'])
-            postfix = '{0}{1}{2:03n}'.format(infix, '_psa', i+1)
+            postfix = '{0}_{1:03n}'.format(infix, i+1)
             top_name, fit_trj_name = p.run(align=align, filename=filename,
                                            postfix=postfix,
                                            targetdir=trj_dir,

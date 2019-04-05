@@ -171,6 +171,7 @@ class TestPSAnalysis(object):
     def test_load(self, psa):
         """Test that the automatically saved files can be loaded"""
         expected_path_names = psa.path_names[:]
+        print(' >>> Expected path names', expected_path_names)
         expected_paths = [p.copy() for p in psa.paths]
         psa.save_paths()
         psa.load()
@@ -182,6 +183,8 @@ class TestPSAnalysis(object):
         for ipath, (observed, expected) in enumerate(zip(psa.paths, expected_paths)):
             assert_almost_equal(observed, expected, decimal=6,
                                 err_msg="loaded path {} does not agree with input".format(ipath))
+
+        # captured = capsys.readouterr()
 
     def test_dendrogram_produced(self, plot_data):
         """Test whether Dendrogram dictionary object was produced"""
