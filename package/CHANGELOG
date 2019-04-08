@@ -15,7 +15,7 @@ The rules for this file:
 ------------------------------------------------------------------------------
 mm/dd/yy micaela-matta, xiki-tempula, zemanj, mattwthompson, orbeckst, aliehlen,
          dpadula85, jbarnoud, manuel.nuno.melo, richardjgowers, mattwthompson,
-         ayushsuhane, picocentauri, NinadBhat
+         ayushsuhane, picocentauri, NinadBhat, sseyler
 
   * 0.20.0
 
@@ -62,6 +62,7 @@ Changes
   * changed fudge_factor in guess_bonds to deal with new vdw radii (#2138, PR #2142)
 
 Fixes
+  * Fixed default saving and loading behavior of Path and PSAnalysis (Issue #2049)
   * fixed the segmentation fault in capped_distances (Issue #2164, PR #2169)
   * fixed gcc support in MacOS (Issue #2162, PR #2163)
   * fixed error when reading bonds/angles/dihedrals from gsd file (Issue #2152,
