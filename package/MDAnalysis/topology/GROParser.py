@@ -44,6 +44,7 @@ Classes
    :inherited-members:
 
 """
+import re
 import numpy as np
 
 from ..lib.util import openany
@@ -91,19 +92,39 @@ class GROParser(TopologyReaderBase):
             names = np.zeros(n_atoms, dtype=object)
             indices = np.zeros(n_atoms, dtype=np.int32)
 
-            for i, line in enumerate(inf):
-                if i == n_atoms:
-                    break
-                try:
-                    resids[i] = int(line[:5])
-                    resnames[i] = line[5:10].strip()
-                    names[i] = line[10:15].strip()
-                    indices[i] = int(line[15:20])
-                except (ValueError, TypeError):
-                    errmsg = (
-                    f"Couldn't read the following line of the .gro file:\n"
-                    f"{line}")
-                    raise IOError(errmsg) from None
+            # compile regex to parse full file string
+            # data to avoid pure Python iteration over
+            # lines
+            prog = re.compile(r'''
+                               # start of line and any spaces
+                               ^
+                               # then any digits are the resids
+                               (.{5})
+                               # followed by the resnames
+                               (.{5})
+                               # then space before "atom" names
+                               (.{5})
+                               # then (maybe) spaces and atom numbers
+                               (.{5})
+                               # then 3 groups of nums
+                               # and EOL
+                               \s+[+-]?\d+\.?\d+\b
+                               \s+[+-]?\d+\.?\d+\b
+                               \s+[+-]?\d+\.?\d+\s*
+                               $
+                               ''',
+                              re.M|re.X|re.I)
+
+            str_data = inf.read()
+            try:
+                result = prog.findall(str_data)
+                resids[:] = [int(ele[0].strip()) for ele in result]
+                resnames[:] = [ele[1].strip() for ele in result]
+                names[:] = [ele[2].strip() for ele in result]
+                indices[:] = [int(ele[3].strip()) for ele in result]
+            except ValueError:
+                raise IOError
+
         # Check all lines had names
         if not np.all(names):
             missing = np.where(names == '')
